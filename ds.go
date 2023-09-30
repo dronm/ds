@@ -1,6 +1,6 @@
-//data storage package implements data storage privider schema
-//required provider must be imported with _ ds/... directive before usage
-//provider costructor parameters must be supplied to NewProvider() function
+// Package ds (data storage) implements data storage privider schema.
+// Required provider must be imported with _ ds/... directive before usage.
+// Provider costructor parameters must be supplied to NewProvider() function.
 package ds
 
 import (
@@ -27,6 +27,7 @@ func Register(name string, provide Provider) {
 	provides[name] = provide
 }
 
+// NewProvider
 func NewProvider(provideName string, provParams ...interface{}) (Provider, error) {
 	provider, ok := provides[provideName]
 	if !ok {

@@ -1,4 +1,6 @@
-//package pgds implements postgresql data storage based on pgx driver
+// Package pgds implements postgresql data storage based on pgx driver.
+// It supports schema with one primary and several secondaty servers.
+// 
 package pgds
 
 import (
@@ -7,21 +9,21 @@ import (
 	"errors"
 	"time"
 
-	"ds"
+	"github.com/dronm/ds"
 
 	"github.com/jackc/pgx/v4/pgxpool"
 	"github.com/jackc/pgconn"
 )
 
 var pder = &PgProvider{}
+
 type ServerID string
+const PRIMARY_ID ServerID = "primary" //primary server ID
 
-const PRIMARY_ID ServerID = "primary"
-
-//pg notification callback function
+// OnDbNotificationProto pg notification callback function.
 type OnDbNotificationProto = func(*pgconn.PgConn, *pgconn.Notification)
 
-//Holds db instances
+// Db holds db instances.
 type Db struct {
 	connStr string
 	onNotification OnDbNotificationProto
@@ -30,13 +32,14 @@ type Db struct {
 	ref int
 }
 
-//returns active db instancies counter
+// GetRefCount returns active db instancie counter.
 func (d *Db) GetRefCount() int {
 	d.mx.Lock()
 	defer d.mx.Unlock()
 	return d.ref
 }
 
+// Connect opens connection with data base.
 func (d *Db) Connect() error {
 	conn_conf, err := pgxpool.ParseConfig(d.connStr)
 	if err != nil {
@@ -47,6 +50,7 @@ func (d *Db) Connect() error {
 	return err
 }
 
+// addRef adds intenal data base instance counter.
 func (d *Db) addRef() error {
 	d.mx.Lock()
 	defer d.mx.Unlock()
@@ -59,7 +63,7 @@ func (d *Db) addRef() error {
 	return nil
 }
 
-//decreases db instance counter
+// release decreases data base instance counter.
 func (d *Db) release() {
 	d.mx.Lock()
 	if d.ref > 0 {
@@ -68,12 +72,13 @@ func (d *Db) release() {
 	d.mx.Unlock()
 }
 
-//PgCluster holds one primary and array of secondary instances
+// PgProvider holds one primary and array of secondary instances.
 type PgProvider struct {
 	Primary *Db
 	Secondaries map[ServerID]*Db
 }
 
+// Release releases database connection by its ID (primary or secondary).
 func (p *PgProvider) Release(poolConn *pgxpool.Conn, id ServerID){
 	if id == PRIMARY_ID {
 		p.Primary.release()
@@ -85,6 +90,8 @@ func (p *PgProvider) Release(poolConn *pgxpool.Conn, id ServerID){
 	poolConn.Release()
 }
 
+// GetPrimary returns primary connection with its ID.
+// ID is necessary for releasing.
 func (p *PgProvider) GetPrimary() (*pgxpool.Conn, ServerID, error) {
 	err := p.Primary.addRef()
 	if err != nil {
@@ -95,12 +102,15 @@ func (p *PgProvider) GetPrimary() (*pgxpool.Conn, ServerID, error) {
 	}
 }
 
+// ReleaseSecondary releases secondary connection by its ID.
+// Deprecated: use common Release()
 func (p *PgProvider) ReleaseSecondary(conID string){
 	p.Primary.release()
 }
 
-//Looks for an avalable secondary with less ref count
-//if nothing found returns primary
+// GetSecondary looks for an avalable secondary with less ref count.
+// srvLsn is a pg replication log position. If empty the list busy server will be returned. Otherwise server which position is higher then given lsn.
+// If nothing found returns primary.
 func (p *PgProvider) GetSecondary(srvLsn string) (*pgxpool.Conn, ServerID, error) {
 	if p.Secondaries == nil {
 		//no secondary available
@@ -184,10 +194,11 @@ func (p *PgProvider) GetSecondary(srvLsn string) (*pgxpool.Conn, ServerID, error
 	}
 }
 
-//Expects parameters:
-//primaryConnStr string
-//onDbNotification OnDbNotificationProto
-//secondaries map[string]string of IDs with connection strings 
+// InitProvider initializes provider.
+// Expects parameters:
+// 	primaryConnStr string containing connection todata base.
+// 	onDbNotification of type OnDbNotificationProto. Callback function tobe used for database notifications.
+// 	secondaries map[string]string of IDs with connection strings. Key is the server ID and value is a connection string.
 func (p *PgProvider) InitProvider(provParams []interface{}) error {
 	if len(provParams)<3 {
 		return errors.New("InitProvider parameters: primaryConnStr(string), onDbNotification(OnDbNotificationProto), secondaries(map[string]string)")
@@ -214,6 +225,8 @@ func (p *PgProvider) InitProvider(provParams []interface{}) error {
 	
 	return nil
 }
+
+// init registers pg provider.
 func init() {
 	ds.Register("pg", pder)
 }
