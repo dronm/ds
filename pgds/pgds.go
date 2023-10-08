@@ -138,9 +138,11 @@ func (p *PgProvider) GetSecondary(srvLsn string) (*pgxpool.Conn, ServerID, error
 			//no secondary available
 			return p.GetPrimary()
 		}
-		conn, err := min_db.Pool.Acquire(context.Background())
-		if err == nil {
-			return conn, min_id, nil
+		if err := min_db.addRef(); err == nil {
+			conn, err := min_db.Pool.Acquire(context.Background())
+			if err == nil {
+				return conn, min_id, nil
+			}
 		}
 		if excluded_ids == nil {
 			excluded_ids = make(map[ServerID]bool)

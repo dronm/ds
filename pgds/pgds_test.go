@@ -10,7 +10,7 @@ import (
 	//"github.com/jackc/pgx/v4"
 )
 
-func TestPrimary(t *testing.T) {
+func Test_Primary(t *testing.T) {
 	//get provider interface
 	t.Logf("Testing primary server to pg database connection")
 	
@@ -49,11 +49,11 @@ func TestPrimary(t *testing.T) {
 	}
 }
 
-func TestSecondary(t *testing.T) {
+func Test_Secondary(t *testing.T) {
 	//get provider interface
 	t.Logf("Testing secondary server to pg database connection")
 	
-	prov, err := ds.NewProvider("pg", "postgresql://postgres@:5432/test_proj", nil, nil)
+	prov, err := ds.NewProvider("pg", "", nil, map[string]string{"sec1": "postgresql://postgres@:5432/test_proj"})
 	if err != nil {
 		t.Logf("NewProvider() failed: %v", err)
 		t.Fail()
