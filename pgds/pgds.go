@@ -1,23 +1,23 @@
 // Package pgds implements postgresql data storage based on pgx driver.
 // It supports schema with one primary and several secondaty servers.
-// 
 package pgds
 
 import (
-	"sync"
 	"context"
 	"errors"
+	"sync"
 	"time"
 
 	"github.com/dronm/ds"
 
-	"github.com/jackc/pgx/v4/pgxpool"
 	"github.com/jackc/pgconn"
+	"github.com/jackc/pgx/v4/pgxpool"
 )
 
 var pder = &PgProvider{}
 
 type ServerID string
+
 const PRIMARY_ID ServerID = "primary" //primary server ID
 
 // OnDbNotificationProto pg notification callback function.
@@ -25,11 +25,11 @@ type OnDbNotificationProto = func(*pgconn.PgConn, *pgconn.Notification)
 
 // Db holds db instances.
 type Db struct {
-	connStr string
+	connStr        string
 	onNotification OnDbNotificationProto
-	Pool *pgxpool.Pool
-	mx sync.RWMutex
-	ref int
+	Pool           *pgxpool.Pool
+	mx             sync.RWMutex
+	ref            int
 }
 
 // GetRefCount returns active db instancie counter.
@@ -45,7 +45,7 @@ func (d *Db) Connect() error {
 	if err != nil {
 		return err
 	}
-	conn_conf.ConnConfig.OnNotification = d.onNotification		
+	conn_conf.ConnConfig.OnNotification = d.onNotification
 	d.Pool, err = pgxpool.ConnectConfig(context.Background(), conn_conf)
 	return err
 }
@@ -54,12 +54,14 @@ func (d *Db) Connect() error {
 func (d *Db) addRef() error {
 	d.mx.Lock()
 	defer d.mx.Unlock()
-	
+
 	if d.Pool == nil {
-		d.Connect()
-	}	
+		if err := d.Connect(); err != nil {
+			return err
+		}
+	}
 	d.ref++
-	
+
 	return nil
 }
 
@@ -74,15 +76,15 @@ func (d *Db) release() {
 
 // PgProvider holds one primary and array of secondary instances.
 type PgProvider struct {
-	Primary *Db
+	Primary     *Db
 	Secondaries map[ServerID]*Db
 }
 
 // Release releases database connection by its ID (primary or secondary).
-func (p *PgProvider) Release(poolConn *pgxpool.Conn, id ServerID){
+func (p *PgProvider) Release(poolConn *pgxpool.Conn, id ServerID) {
 	if id == PRIMARY_ID {
 		p.Primary.release()
-	}else{
+	} else {
 		if sec, ok := p.Secondaries[id]; ok {
 			sec.release()
 		}
@@ -95,8 +97,8 @@ func (p *PgProvider) Release(poolConn *pgxpool.Conn, id ServerID){
 func (p *PgProvider) GetPrimary() (*pgxpool.Conn, ServerID, error) {
 	err := p.Primary.addRef()
 	if err != nil {
-		return nil , "", err
-	}else{
+		return nil, "", err
+	} else {
 		conn, err := p.Primary.Pool.Acquire(context.Background())
 		return conn, PRIMARY_ID, err
 	}
@@ -104,7 +106,7 @@ func (p *PgProvider) GetPrimary() (*pgxpool.Conn, ServerID, error) {
 
 // ReleaseSecondary releases secondary connection by its ID.
 // Deprecated: use common Release()
-func (p *PgProvider) ReleaseSecondary(conID string){
+func (p *PgProvider) ReleaseSecondary(conID string) {
 	p.Primary.release()
 }
 
@@ -119,10 +121,10 @@ func (p *PgProvider) GetSecondary(srvLsn string) (*pgxpool.Conn, ServerID, error
 	if len(srvLsn) == 0 {
 		//find less busy server
 		var excluded_ids map[ServerID]bool
-	srv_loop:	
+	srv_loop:
 		var min_db *Db
 		var min_id ServerID
-		var min_cnt int = 9999999		
+		var min_cnt int = 9999999
 		for sec_id, sec := range p.Secondaries {
 			if _, ok := excluded_ids[sec_id]; ok {
 				continue
@@ -149,8 +151,8 @@ func (p *PgProvider) GetSecondary(srvLsn string) (*pgxpool.Conn, ServerID, error
 		}
 		excluded_ids[min_id] = true
 		goto srv_loop
-		
-	}else{
+
+	} else {
 		//got minimum required wal position
 		var pool_conn *pgxpool.Conn
 		var err error
@@ -162,29 +164,29 @@ func (p *PgProvider) GetSecondary(srvLsn string) (*pgxpool.Conn, ServerID, error
 			}
 			conn := pool_conn.Conn()
 			if _, err := conn.Prepare(context.Background(), "LSN_CHECK",
-					`SELECT coalesce(pg_wal_lsn_diff(
+				`SELECT coalesce(pg_wal_lsn_diff(
 						(SELECT received_lsn FROM pg_stat_wal_receiver),
 						$1
 					),0::numeric) >= 0`); err != nil {
-				pool_conn.Release()	
+				pool_conn.Release()
 				continue
 			}
 			srv_fits := false
 			tries := 2
 		wt_loop:
 			if err := conn.QueryRow(context.Background(), "LSN_CHECK", srvLsn).Scan(&srv_fits); err != nil {
-				pool_conn.Release()	
+				pool_conn.Release()
 				continue
 			}
 			if !srv_fits && tries > 0 {
-				time.Sleep(time.Duration(100) * time.Millisecond)		
+				time.Sleep(time.Duration(100) * time.Millisecond)
 				tries--
 				goto wt_loop
-				
-			}else if !srv_fits {
-				pool_conn.Release()	
+
+			} else if !srv_fits {
+				pool_conn.Release()
 				continue
-			}else{
+			} else {
 				srv_id = sec_id
 				break
 			}
@@ -198,13 +200,14 @@ func (p *PgProvider) GetSecondary(srvLsn string) (*pgxpool.Conn, ServerID, error
 
 // InitProvider initializes provider.
 // Expects parameters:
-// 	primaryConnStr string containing connection todata base.
-// 	onDbNotification of type OnDbNotificationProto. Callback function tobe used for database notifications.
-// 	secondaries map[string]string of IDs with connection strings. Key is the server ID and value is a connection string.
+//
+//	primaryConnStr string containing connection to data base.
+//	onDbNotification of type OnDbNotificationProto. Callback function to be used for database notifications.
+//	secondaries map[string]string of IDs with connection strings. Key is the server ID and value is a connection string.
 func (p *PgProvider) InitProvider(provParams []interface{}) error {
-	if len(provParams)<3 {
+	if len(provParams) < 3 {
 		return errors.New("InitProvider parameters: primaryConnStr(string), onDbNotification(OnDbNotificationProto), secondaries(map[string]string)")
-	}	
+	}
 	primaryConnStr, ok := provParams[0].(string)
 	if !ok {
 		return errors.New("InitProvider parameter primaryConnStr must be of type string")
@@ -216,15 +219,15 @@ func (p *PgProvider) InitProvider(provParams []interface{}) error {
 			return errors.New("InitProvider parameter onDbNotification must be of type OnDbNotificationProto")
 		}
 	}
-	p.Primary = &Db{connStr: primaryConnStr, onNotification: onDbNotification}	
-	
+	p.Primary = &Db{connStr: primaryConnStr, onNotification: onDbNotification}
+
 	if secondaries, ok := provParams[2].(map[string]string); ok {
 		p.Secondaries = make(map[ServerID]*Db, 0)
 		for id, conn_s := range secondaries {
 			p.Secondaries[ServerID(id)] = &Db{connStr: conn_s}
 		}
 	}
-	
+
 	return nil
 }
 
