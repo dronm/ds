@@ -1,5 +1,9 @@
-// Package pgds implements postgresql data storage based on pgx driver.
+// pgds package implements postgresql data storage based on pgx driver.
 // It supports schema with one primary and several secondaty servers.
+// Primary server is retrieved by GetPrimary() method.
+// Primary server is used for write queries (INSER/UPDATE/DELETE)
+// The list used secondary server is returned by GetSecondary() function.
+// Secondary servers are read-only, used for SELECT queries.
 package pgds
 
 import (
@@ -10,8 +14,8 @@ import (
 
 	"github.com/dronm/ds"
 
-	"github.com/jackc/pgconn"
-	"github.com/jackc/pgx/v4/pgxpool"
+	"github.com/jackc/pgx/v5/pgconn"
+	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 var pder = &PgProvider{}
@@ -46,7 +50,7 @@ func (d *Db) Connect() error {
 		return err
 	}
 	conn_conf.ConnConfig.OnNotification = d.onNotification
-	d.Pool, err = pgxpool.ConnectConfig(context.Background(), conn_conf)
+	d.Pool, err = pgxpool.NewWithConfig(context.Background(), conn_conf)
 	return err
 }
 
@@ -92,6 +96,10 @@ func (p *PgProvider) Release(poolConn *pgxpool.Conn, id ServerID) {
 	poolConn.Release()
 }
 
+func (p *PgProvider) ReleasePrimary(poolConn *pgxpool.Conn) {
+	p.Release(poolConn, PRIMARY_ID)
+}
+
 // GetPrimary returns primary connection with its ID.
 // ID is necessary for releasing.
 func (p *PgProvider) GetPrimary() (*pgxpool.Conn, ServerID, error) {
@@ -111,7 +119,8 @@ func (p *PgProvider) ReleaseSecondary(conID string) {
 }
 
 // GetSecondary looks for an avalable secondary with less ref count.
-// srvLsn is a pg replication log position. If empty the list busy server will be returned. Otherwise server which position is higher then given lsn.
+// srvLsn is a pg replication log position. If empty the list busy server will be returned.
+// Otherwise server which position is higher then given lsn.
 // If nothing found returns primary.
 func (p *PgProvider) GetSecondary(srvLsn string) (*pgxpool.Conn, ServerID, error) {
 	if p.Secondaries == nil {
@@ -200,7 +209,6 @@ func (p *PgProvider) GetSecondary(srvLsn string) (*pgxpool.Conn, ServerID, error
 
 // InitProvider initializes provider.
 // Expects parameters:
-//
 //	primaryConnStr string containing connection to data base.
 //	onDbNotification of type OnDbNotificationProto. Callback function to be used for database notifications.
 //	secondaries map[string]string of IDs with connection strings. Key is the server ID and value is a connection string.

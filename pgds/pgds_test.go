@@ -4,16 +4,26 @@ import (
 	"context"
 	"testing"
 	"time"
+	"os"
 
 	"github.com/dronm/ds"
-	//"github.com/jackc/pgx/v4"
 )
+
+const ENV_PG_CONN      = "PG_CONN"
+
+func getTestVar(t *testing.T, n string) string {
+	v := os.Getenv(n)
+	if v == "" {
+		t.Fatalf("getTestVar() failed: %s environment variable is not set", n)
+	}
+	return v
+}
 
 func TestPrimary(t *testing.T) {
 	//get provider interface
 	t.Logf("Testing primary server to pg database connection")
 
-	prov, err := ds.NewProvider("pg", "postgresql://postgres@:5432/test_proj", nil, nil)
+	prov, err := ds.NewProvider("pg", getTestVar(t, ENV_PG_CONN), nil, nil)
 	if err != nil {
 		t.Fatalf("NewProvider() failed: %v", err)
 	}
@@ -47,7 +57,7 @@ func TestSecondary(t *testing.T) {
 	//get provider interface
 	t.Logf("Testing secondary server to pg database connection")
 
-	prov, err := ds.NewProvider("pg", "", nil, map[string]string{"sec1": "postgresql://postgres@:5432/test_proj"})
+	prov, err := ds.NewProvider("pg", "", nil, map[string]string{"sec1": getTestVar(t, ENV_PG_CONN)})
 	if err != nil {
 		t.Fatalf("NewProvider() failed: %v", err)
 	}
