@@ -8,7 +8,7 @@ import (
 )
 
 type Provider interface {
-	InitProvider(provParams []any) error
+	InitProvider(provParams []interface{}) error
 }
 
 var provides = make(map[string]Provider)
@@ -27,7 +27,7 @@ func Register(name string, provide Provider) {
 }
 
 // NewProvider is a provider construction
-func NewProvider(providerName string, provParams ...any) (Provider, error) {
+func NewProvider(providerName string, provParams ...interface{}) (Provider, error) {
 	provider, ok := provides[providerName]
 	if !ok {
 		return nil, fmt.Errorf("unknown provider %q (forgotten import?)", providerName)
