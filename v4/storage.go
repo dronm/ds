@@ -6,6 +6,7 @@ import (
 )
 
 var ErrNoRows = errors.New("no rows in result set")
+var ErrTxCommitRollback = errors.New("transaction commit resulted in rollback")
 
 type ServerID string
 

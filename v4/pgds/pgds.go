@@ -16,6 +16,8 @@ import (
 	"github.com/dronm/ds/v4"
 )
 
+const ErrCodeUniqueViolation = "23505"
+
 var replicaHasLSNFn = replicaHasLSN
 
 var ErrNoPrimaryPool = errors.New("primary pool is not available")
@@ -503,7 +505,16 @@ func (t *pgTx) QueryRow(
 }
 
 func (t *pgTx) Commit(ctx context.Context) error {
-	return t.tx.Commit(ctx)
+	err := t.tx.Commit(ctx)
+	if err == nil {
+		return nil
+	}
+
+	if errors.Is(err, pgx.ErrTxCommitRollback) {
+		return ds.ErrTxCommitRollback
+	}
+
+	return err
 }
 
 func (t *pgTx) Rollback(ctx context.Context) error {
@@ -519,4 +530,10 @@ func replicaHasLSN(
 	var ok bool
 	err := conn.QueryRow(ctx, lsnCheckQuery, minLSN).Scan(&ok)
 	return ok, err
+}
+
+func IsUniqueViolation(err error) bool {
+	var pgErr *pgconn.PgError
+
+	return errors.As(err, &pgErr) && pgErr.Code == ErrCodeUniqueViolation
 }
